@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pantheon · Sherpa Queue</title>
+<script src="/socket.io/socket.io.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #0a0d12;
+  --bg2:       #0e1219;
+  --bg3:       #131820;
+  --bg4:       #1a2030;
+  --border:    rgba(255,255,255,0.07);
+  --border2:   rgba(255,255,255,0.13);
+  --text:      #e8eaf0;
+  --muted:     rgba(200,210,230,0.45);
+  --dim:       rgba(200,210,230,0.22);
+
+  /* Destiny accent colours */
+  --gold:      #c8a951;
+  --gold-glow: rgba(200,169,81,0.18);
+  --gold-dim:  rgba(200,169,81,0.1);
+  --arc:       #79b4f5;
+  --arc-dim:   rgba(121,180,245,0.12);
+  --solar:     #f0622a;
+  --solar-dim: rgba(240,98,42,0.12);
+  --void:      #b07ef5;
+  --void-dim:  rgba(176,126,245,0.12);
+  --stasis:    #4e9af5;
+  --strand:    #3ecf7a;
+  --success:   #3ecf7a;
+  --danger:    #e05050;
+
+  --font-head: 'Barlow Condensed', sans-serif;
+  --font-body: 'Barlow', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── BACKGROUND TEXTURE ────────────────────────── */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(121,180,245,0.055) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 90% 80%, rgba(176,126,245,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ── HEADER ────────────────────────────────────── */
+.header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(10,13,18,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border2);
+  padding: 0 2rem;
+  height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.header-left { display: flex; align-items: center; gap: 1rem; }
+
+/* Destiny ghost icon SVG */
+.ghost-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  filter: drop-shadow(0 0 6px rgba(121,180,245,0.5));
+}
+
+.title-block {}
+.title-block h1 {
+  font-family: var(--font-head);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+  line-height: 1;
+}
+.title-block p {
+  font-family: var(--font-head);
+  font-size: 0.62rem;
+  color: var(--muted);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+.header-right { display: flex; align-items: center; gap: 0.75rem; }
+
+.live-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-head);
+  font-size: 0.68rem; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--success);
+  padding: 4px 12px;
+  border: 1px solid rgba(62,207,122,0.2);
+  clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+  background: rgba(62,207,122,0.07);
+}
+.live-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--success);
+  animation: pulse 2.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.35;transform:scale(0.7)} }
+
+.sherpa-btn {
+  font-family: var(--font-head);
+  font-size: 0.78rem; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 7px 16px;
+  background: var(--void-dim);
+  border: 1px solid rgba(176,126,245,0.3);
+  color: var(--void);
+  cursor: pointer;
+  transition: all 0.2s;
+  clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+}
+.sherpa-btn:hover { background: rgba(176,126,245,0.22); }
+.sherpa-btn.active {
+  background: var(--void);
+  border-color: var(--void);
+  color: #0a0d12;
+}
+
+/* ── SUBHEADER / TABS ──────────────────────────── */
+.tabs {
+  position: relative; z-index: 1;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  display: flex; align-items: stretch;
+}
+/* Pantheon banner line */
+.tabs::before {
+  content: 'PANTHEON · LEGEND';
+  position: absolute; right: 2rem; top: 50%; transform: translateY(-50%);
+  font-family: var(--font-head);
+  font-size: 0.6rem; font-weight: 500;
+  letter-spacing: 0.2em; color: var(--dim);
+}
+.tab {
+  font-family: var(--font-head);
+  font-size: 0.82rem; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 0.85rem 1.4rem 0.85rem 0;
+  color: var(--muted);
+  cursor: pointer; border: none; border-bottom: 2px solid transparent;
+  background: none; transition: all 0.2s;
+  margin-right: 1.5rem;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+/* ── LAYOUT ────────────────────────────────────── */
+.main {
+  position: relative; z-index: 1;
+  display: grid; grid-template-columns: 1fr 340px;
+  min-height: calc(100vh - 107px);
+}
+.queue-panel { padding: 1.75rem 2rem; border-right: 1px solid var(--border); overflow-y: auto; }
+.sidebar { padding: 1.75rem; background: var(--bg2); overflow-y: auto; }
+
+/* ── PANEL HEADER ──────────────────────────────── */
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.panel-title {
+  font-family: var(--font-head);
+  font-size: 0.7rem; font-weight: 600;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--muted);
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-title::before {
+  content: '';
+  display: inline-block; width: 12px; height: 2px;
+  background: var(--gold);
+}
+.count-pill {
+  font-family: var(--font-head);
+  font-size: 0.68rem; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 3px 10px;
+  background: var(--gold-dim);
+  border: 1px solid rgba(200,169,81,0.25);
+  color: var(--gold);
+  clip-path: polygon(5px 0%,100% 0%,calc(100% - 5px) 100%,0% 100%);
+}
+
+/* ── QUEUE ENTRY ───────────────────────────────── */
+.queue-entry {
+  position: relative; overflow: hidden;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  margin-bottom: 6px;
+  padding: 0.85rem 1rem;
+  display: grid; grid-template-columns: 42px 1fr auto;
+  gap: 0 0.85rem; align-items: center;
+  transition: border-color 0.2s, background 0.2s;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+}
+.queue-entry:hover { border-color: var(--border2); background: var(--bg4); }
+/* left accent bar */
+.queue-entry::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px;
+  background: var(--arc); opacity: 0; transition: opacity 0.2s;
+}
+.queue-entry:hover::before { opacity: 0.7; }
+.queue-entry.running {
+  background: linear-gradient(90deg, rgba(200,169,81,0.08) 0%, var(--bg3) 55%);
+  border-color: rgba(200,169,81,0.25);
+}
+.queue-entry.running::before { background: var(--gold); opacity: 1; }
+
+/* position marker */
+.pos-num {
+  width: 42px; height: 42px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg4); border: 1px solid var(--border2);
+  font-family: var(--font-head); font-size: 1rem; font-weight: 700;
+  color: var(--muted);
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);
+}
+.pos-num.top {
+  background: var(--gold-dim); border-color: rgba(200,169,81,0.35);
+  color: var(--gold);
+}
+.pos-num.run {
+  background: var(--gold-dim); border-color: rgba(200,169,81,0.35);
+  color: var(--gold); font-size: 1.1rem;
+}
+
+.entry-bungie {
+  font-family: var(--font-head); font-size: 0.95rem; font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  color: var(--text);
+}
+.entry-discord {
+  font-size: 0.72rem; color: var(--muted); margin-top: 3px;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.entry-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+
+.badge {
+  font-family: var(--font-head);
+  font-size: 0.6rem; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 3px 8px; white-space: nowrap;
+  clip-path: polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%);
+}
+.badge-waiting { background: rgba(255,255,255,0.05); color: var(--dim); border: 1px solid var(--border); }
+.badge-running { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(200,169,81,0.3); }
+.badge-done { background: rgba(62,207,122,0.08); color: var(--success); border: 1px solid rgba(62,207,122,0.2); }
+
+.entry-time { font-size: 0.65rem; color: var(--dim); }
+.entry-actions { display: flex; gap: 5px; align-items: center; }
+
+.btn-xs {
+  font-family: var(--font-head);
+  font-size: 0.65rem; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase;
+  padding: 4px 10px; cursor: pointer; transition: all 0.15s;
+  white-space: nowrap;
+  clip-path: polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%);
+}
+.btn-done { background: rgba(62,207,122,0.1); border: 1px solid rgba(62,207,122,0.25); color: var(--success); }
+.btn-done:hover { background: rgba(62,207,122,0.2); }
+.btn-remove { background: transparent; border: none; color: var(--dim); cursor: pointer; font-size: 0.8rem; padding: 3px 5px; transition: color 0.15s; }
+.btn-remove:hover { color: var(--danger); }
+
+/* ── STATS ─────────────────────────────────────── */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; margin-bottom: 1.5rem; }
+.stat-card {
+  background: var(--bg3); border: 1px solid var(--border);
+  padding: 0.85rem;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);
+}
+.stat-num {
+  font-family: var(--font-head); font-size: 1.8rem; font-weight: 700;
+  line-height: 1; color: var(--gold);
+}
+.stat-label {
+  font-family: var(--font-head); font-size: 0.6rem; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); margin-top: 4px;
+}
+
+/* ── DIVIDER ───────────────────────────────────── */
+.section-divider {
+  font-family: var(--font-head);
+  font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.85rem;
+  display: flex; align-items: center; gap: 8px;
+}
+.section-divider::before { content: ''; display: block; width: 10px; height: 1px; background: var(--gold); }
+.section-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── FORM ──────────────────────────────────────── */
+.input-group { margin-bottom: 0.65rem; }
+.input-label {
+  font-family: var(--font-head);
+  font-size: 0.65rem; font-weight: 500;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px; display: block;
+}
+input[type="text"], input[type="password"] {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  padding: 0.6rem 0.85rem;
+  color: var(--text);
+  font-family: var(--font-body); font-size: 0.85rem;
+  outline: none; transition: border-color 0.2s;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%);
+}
+input::placeholder { color: var(--dim); }
+input:focus { border-color: rgba(121,180,245,0.5); }
+
+.btn-join {
+  width: 100%; padding: 0.7rem;
+  background: var(--arc-dim);
+  border: 1px solid rgba(121,180,245,0.35);
+  color: var(--arc);
+  font-family: var(--font-head); font-size: 0.88rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  cursor: pointer; margin-top: 0.4rem;
+  transition: all 0.2s;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);
+}
+.btn-join:hover { background: rgba(121,180,245,0.2); border-color: rgba(121,180,245,0.5); }
+.btn-join:active { transform: scale(0.98); }
+
+.toast {
+  font-family: var(--font-head); font-size: 0.75rem; font-weight: 500;
+  letter-spacing: 0.06em;
+  padding: 0.55rem 0.85rem;
+  margin-top: 0.55rem; display: none;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%);
+}
+.toast.success { background: rgba(62,207,122,0.08); border: 1px solid rgba(62,207,122,0.2); color: var(--success); display: block; }
+.toast.error { background: rgba(224,80,80,0.08); border: 1px solid rgba(224,80,80,0.2); color: var(--danger); display: block; }
+
+/* ── SHERPA CONTROLS ───────────────────────────── */
+.sherpa-controls { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+
+.sherpa-locked {
+  font-family: var(--font-head); font-size: 0.75rem;
+  letter-spacing: 0.06em; line-height: 1.7;
+  color: var(--dim); text-align: center;
+  padding: 1rem;
+  border: 1px dashed var(--border2);
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);
+}
+
+.btn-next {
+  width: 100%; padding: 0.75rem;
+  background: var(--gold-dim);
+  border: 1px solid rgba(200,169,81,0.35);
+  color: var(--gold);
+  font-family: var(--font-head); font-size: 0.88rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  cursor: pointer; margin-bottom: 0.55rem;
+  transition: all 0.2s;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);
+}
+.btn-next:hover { background: rgba(200,169,81,0.2); }
+
+.btn-clear {
+  width: 100%; padding: 0.6rem;
+  background: transparent; border: 1px solid var(--border2);
+  color: var(--muted);
+  font-family: var(--font-head); font-size: 0.78rem; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; transition: all 0.15s;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%);
+}
+.btn-clear:hover { border-color: rgba(224,80,80,0.4); color: var(--danger); }
+
+.sherpa-key-badge {
+  font-family: var(--font-head); font-size: 0.58rem; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 2px 7px;
+  background: var(--void-dim); border: 1px solid rgba(176,126,245,0.2);
+  color: var(--void);
+  clip-path: polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%);
+}
+.sherpa-key-badge.active-badge {
+  background: rgba(62,207,122,0.1); border-color: rgba(62,207,122,0.2); color: var(--success);
+}
+
+/* ── EMPTY STATE ───────────────────────────────── */
+.empty-state { text-align: center; padding: 4rem 1rem; }
+.empty-icon { font-size: 2.5rem; opacity: 0.18; margin-bottom: 0.75rem; }
+.empty-text {
+  font-family: var(--font-head); font-size: 0.82rem; font-weight: 400;
+  letter-spacing: 0.08em; color: var(--dim); line-height: 1.8;
+}
+
+/* ── COMPLETED ─────────────────────────────────── */
+.completed-panel { padding: 1.75rem 2rem; grid-column: 1 / -1; }
+.completed-entry {
+  background: var(--bg3); border: 1px solid var(--border);
+  padding: 0.75rem 1rem; margin-bottom: 5px;
+  display: flex; align-items: center; justify-content: space-between;
+  opacity: 0.6; transition: opacity 0.2s;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%);
+}
+.completed-entry:hover { opacity: 1; }
+.completed-left { display: flex; align-items: center; gap: 0.7rem; }
+.check-hexagon {
+  width: 28px; height: 28px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(62,207,122,0.1); border: 1px solid rgba(62,207,122,0.2);
+  font-size: 0.75rem; color: var(--success);
+  clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
+}
+
+/* ── PASSWORD MODAL ────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(8,10,15,0.88);
+  display: none; align-items: center; justify-content: center;
+  backdrop-filter: blur(6px);
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--bg2);
+  border: 1px solid rgba(176,126,245,0.3);
+  padding: 2rem; width: 320px; max-width: 90vw;
+  position: relative;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%);
+}
+/* corner accent */
+.modal::after {
+  content: '';
+  position: absolute; bottom: 0; right: 0;
+  width: 28px; height: 28px;
+  background: linear-gradient(135deg, transparent 50%, rgba(176,126,245,0.35) 50%);
+  pointer-events: none;
+}
+.modal-title {
+  font-family: var(--font-head); font-size: 1.1rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.3rem;
+}
+.modal-sub {
+  font-size: 0.78rem; color: var(--muted); margin-bottom: 1.25rem; line-height: 1.6;
+}
+.btn-modal {
+  width: 100%; padding: 0.65rem;
+  font-family: var(--font-head); font-size: 0.85rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  cursor: pointer; margin-top: 0.5rem; transition: all 0.15s;
+  clip-path: polygon(0 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%);
+}
+.btn-modal-confirm { background: var(--void); border: none; color: #0a0d12; }
+.btn-modal-confirm:hover { opacity: 0.88; }
+.btn-modal-cancel { background: transparent; border: 1px solid var(--border2); color: var(--muted); }
+.btn-modal-cancel:hover { border-color: var(--border-accent); color: var(--text); }
+
+/* ── SCROLLBAR ─────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+@media (max-width: 720px) {
+  .main { grid-template-columns: 1fr; }
+  .queue-panel { border-right: none; border-bottom: 1px solid var(--border); }
+  .tabs::before { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- PASSWORD MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title">Sherpa Access</div>
+    <div class="modal-sub">Enter the Sherpa password to unlock queue controls for this session.</div>
+    <div class="input-group">
+      <label class="input-label">Password</label>
+      <input type="password" id="pw-input" placeholder="Enter password" onkeydown="if(event.key==='Enter')confirmPw()" />
+    </div>
+    <div class="toast" id="pw-toast"></div>
+    <button class="btn-modal btn-modal-confirm" onclick="confirmPw()">Authenticate</button>
+    <button class="btn-modal btn-modal-cancel" onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <!-- Destiny Ghost icon -->
+    <svg class="ghost-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="20,2 26,10 36,8 34,18 40,24 32,28 32,36 24,34 20,40 16,34 8,36 8,28 0,24 6,18 4,8 14,10" fill="rgba(121,180,245,0.15)" stroke="rgba(121,180,245,0.7)" stroke-width="1.2"/>
+      <circle cx="20" cy="20" r="5" fill="rgba(121,180,245,0.9)"/>
+      <circle cx="20" cy="20" r="2.5" fill="white"/>
+    </svg>
+    <div class="title-block">
+      <h1>Pantheon Sherpa Queue</h1>
+      <p>Legend Difficulty · All Encounters</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge">
+      <div class="live-dot" id="conn-dot" style="background:var(--dim)"></div>
+      <span id="conn-label">Connecting</span>
+    </div>
+    <button class="sherpa-btn" id="sherpa-toggle-btn" onclick="toggleSherpa()">⚔ Sherpa</button>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('queue',this)">Queue</button>
+  <button class="tab" onclick="switchTab('completed',this)">Completed</button>
+</div>
+
+<!-- QUEUE VIEW -->
+<div class="main" id="view-queue">
+  <div class="queue-panel">
+    <div class="panel-header">
+      <span class="panel-title">Guardians Waiting</span>
+      <span class="count-pill" id="queue-count">0 in queue</span>
+    </div>
+    <div id="queue-list"></div>
+  </div>
+
+  <div class="sidebar">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num" id="stat-waiting">0</div>
+        <div class="stat-label">Waiting</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="stat-done">0</div>
+        <div class="stat-label">Completed</div>
+      </div>
+    </div>
+
+    <div class="section-divider">Join the Queue</div>
+    <div class="input-group">
+      <label class="input-label">Bungie ID</label>
+      <input type="text" id="input-bungie" placeholder="Guardian#1234" />
+    </div>
+    <div class="input-group">
+      <label class="input-label">Discord Username</label>
+      <input type="text" id="input-discord" placeholder="your_username" />
+    </div>
+    <button class="btn-join" onclick="joinQueue()">+ Enter Queue</button>
+    <div class="toast" id="join-toast"></div>
+
+    <div class="sherpa-controls" id="sherpa-controls">
+      <div class="section-divider">
+        Sherpa Controls
+        <span class="sherpa-key-badge" id="sherpa-status-badge">Locked</span>
+      </div>
+      <div id="sherpa-locked-msg" class="sherpa-locked">
+        Authenticate as Sherpa to manage the queue.
+      </div>
+      <div id="sherpa-unlocked-controls" style="display:none">
+        <button class="btn-next" onclick="callNext()">▶ Call Next Guardian</button>
+        <button class="btn-clear" onclick="clearQueue()">Disband Queue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- COMPLETED VIEW -->
+<div class="main" id="view-completed" style="display:none">
+  <div class="completed-panel">
+    <div class="panel-header">
+      <span class="panel-title">Completed Runs</span>
+      <span class="count-pill" id="done-count">0 runs</span>
+    </div>
+    <div id="completed-list"></div>
+  </div>
+</div>
+
+<script>
+const socket = io();
+let isSherpa = false, sherpaPassword = '';
+let state = { queue: [], completed: [] };
+
+socket.on('connect', () => {
+  document.getElementById('conn-dot').style.background = 'var(--success)';
+  document.getElementById('conn-label').textContent = 'Live';
+});
+socket.on('disconnect', () => {
+  document.getElementById('conn-dot').style.background = 'var(--danger)';
+  document.getElementById('conn-label').textContent = 'Offline';
+});
+socket.on('state', s => { state = s; render(); });
+
+function timeAgo(ts) {
+  const d = Math.floor((Date.now() - ts) / 1000);
+  if (d < 60) return d + 's ago';
+  if (d < 3600) return Math.floor(d/60) + 'm ago';
+  return Math.floor(d/3600) + 'h ago';
+}
+function formatTime(ts) {
+  return new Date(ts).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const discordSvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="opacity:0.4;flex-shrink:0"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.001.022.012.042.03.052a19.9 19.9 0 0 0 5.993 3.03.079.079 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.292a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.1.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>`;
+
+function render() {
+  const running = state.queue.filter(e => e.status === 'running');
+  const waiting = state.queue.filter(e => e.status === 'waiting');
+  const visible = [...running, ...waiting];
+
+  document.getElementById('queue-count').textContent = visible.length + ' in queue';
+  document.getElementById('stat-waiting').textContent = waiting.length;
+  document.getElementById('stat-done').textContent = state.completed.length;
+
+  const list = document.getElementById('queue-list');
+  if (!visible.length) {
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon">👻</div><div class="empty-text">Queue is empty.<br>Guardians can sign up below.</div></div>';
+  } else {
+    list.innerHTML = visible.map((e, i) => {
+      const pos = i + 1;
+      const isRun = e.status === 'running';
+      const posClass = isRun ? 'run' : (pos === 1 ? 'top' : '');
+      return `
+      <div class="queue-entry ${isRun ? 'running' : ''}">
+        <div class="pos-num ${posClass}">${isRun ? '▶' : pos}</div>
+        <div style="overflow:hidden">
+          <div class="entry-bungie">${esc(e.bungie)}</div>
+          <div class="entry-discord">${discordSvg} ${esc(e.discord)}</div>
+        </div>
+        <div class="entry-meta">
+          <span class="badge ${isRun ? 'badge-running' : 'badge-waiting'}">${isRun ? '▶ In Run' : 'Waiting'}</span>
+          <div class="entry-actions">
+            ${isSherpa && isRun ? `<button class="btn-xs btn-done" onclick="markDone(${e.id})">✓ Done</button>` : ''}
+            ${isSherpa ? `<button class="btn-remove" onclick="removeEntry(${e.id})" title="Remove">✕</button>` : ''}
+          </div>
+          <span class="entry-time">${timeAgo(e.joinedAt)}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const cList = document.getElementById('completed-list');
+  document.getElementById('done-count').textContent = state.completed.length + ' runs';
+  if (!state.completed.length) {
+    cList.innerHTML = '<div class="empty-state"><div class="empty-icon">🏆</div><div class="empty-text">No completed runs yet.</div></div>';
+  } else {
+    cList.innerHTML = state.completed.map(e => `
+      <div class="completed-entry">
+        <div class="completed-left">
+          <div class="check-hexagon">✓</div>
+          <div>
+            <div style="font-family:var(--font-head);font-size:0.92rem;font-weight:600;letter-spacing:0.03em">${esc(e.bungie)}</div>
+            <div style="font-size:0.72rem;color:var(--muted)">${esc(e.discord)}</div>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <span class="badge badge-done">Completed</span>
+          <div style="font-size:0.65rem;color:var(--dim);margin-top:4px">${formatTime(e.completedAt)}</div>
+        </div>
+      </div>`).join('');
+  }
+}
+
+function joinQueue() {
+  const bungie = document.getElementById('input-bungie').value.trim();
+  const discord = document.getElementById('input-discord').value.trim();
+  socket.emit('join', { bungie, discord }, res => {
+    const t = document.getElementById('join-toast');
+    if (res.ok) {
+      t.textContent = '✓ In the queue, Guardian. Stand by.';
+      t.className = 'toast success';
+      document.getElementById('input-bungie').value = '';
+      document.getElementById('input-discord').value = '';
+    } else {
+      t.textContent = res.msg;
+      t.className = 'toast error';
+    }
+    setTimeout(() => t.className = 'toast', 3500);
+  });
+}
+
+function callNext() {
+  socket.emit('call_next', { password: sherpaPassword }, res => { if (!res.ok) alert(res.msg); });
+}
+function markDone(id) {
+  socket.emit('mark_done', { password: sherpaPassword, id }, res => { if (!res.ok) alert(res.msg); });
+}
+function removeEntry(id) {
+  socket.emit('remove', { password: sherpaPassword, id }, res => { if (!res.ok) alert(res.msg); });
+}
+function clearQueue() {
+  if (!confirm('Disband the entire queue?')) return;
+  socket.emit('clear_queue', { password: sherpaPassword }, res => { if (!res.ok) alert(res.msg); });
+}
+
+function toggleSherpa() {
+  if (isSherpa) {
+    isSherpa = false; sherpaPassword = '';
+    document.getElementById('sherpa-toggle-btn').classList.remove('active');
+    document.getElementById('sherpa-status-badge').textContent = 'Locked';
+    document.getElementById('sherpa-status-badge').classList.remove('active-badge');
+    document.getElementById('sherpa-locked-msg').style.display = '';
+    document.getElementById('sherpa-unlocked-controls').style.display = 'none';
+    render();
+  } else {
+    document.getElementById('modal').classList.add('open');
+    setTimeout(() => document.getElementById('pw-input').focus(), 50);
+  }
+}
+function confirmPw() {
+  const pw = document.getElementById('pw-input').value;
+  socket.emit('sherpa_auth', { password: pw }, res => {
+    if (res.ok) {
+      isSherpa = true; sherpaPassword = pw;
+      document.getElementById('modal').classList.remove('open');
+      document.getElementById('pw-input').value = '';
+      document.getElementById('sherpa-toggle-btn').classList.add('active');
+      document.getElementById('sherpa-status-badge').textContent = 'Active';
+      document.getElementById('sherpa-status-badge').classList.add('active-badge');
+      document.getElementById('sherpa-locked-msg').style.display = 'none';
+      document.getElementById('sherpa-unlocked-controls').style.display = '';
+      document.getElementById('pw-toast').className = 'toast';
+      render();
+    } else {
+      const t = document.getElementById('pw-toast');
+      t.textContent = 'Access denied.';
+      t.className = 'toast error';
+    }
+  });
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  document.getElementById('pw-input').value = '';
+  document.getElementById('pw-toast').className = 'toast';
+}
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('view-queue').style.display = tab === 'queue' ? '' : 'none';
+  document.getElementById('view-completed').style.display = tab === 'completed' ? '' : 'none';
+}
+['input-bungie','input-discord'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') joinQueue(); });
+});
+setInterval(render, 30000);
+</script>
+</body>
+</html>
